@@ -1,0 +1,7 @@
+INPUT_HEIGHT = 96
+INPUT_WIDTH = 96
+OUTPUT_HEIGHT = 48
+OUTPUT_WIDTH = 48
+NUM_CLASSES = 3
+CLASS_NAMES = ("paper", "shadow", "hand_object")
+

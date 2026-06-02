@@ -1,0 +1,12 @@
+README.md
+pyproject.toml
+src/shadowcam/__init__.py
+src/shadowcam/config.py
+src/shadowcam/dataset.py
+src/shadowcam/metrics.py
+src/shadowcam/model.py
+src/shadowcam/preprocess.py
+src/shadowcam.egg-info/PKG-INFO
+src/shadowcam.egg-info/SOURCES.txt
+src/shadowcam.egg-info/dependency_links.txt
+src/shadowcam.egg-info/top_level.txt

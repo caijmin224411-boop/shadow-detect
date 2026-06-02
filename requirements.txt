@@ -1,0 +1,8 @@
+tensorflow>=2.16,<2.18
+datasets>=2.19
+huggingface_hub>=0.23
+numpy>=1.26
+pillow>=10.0
+opencv-python>=4.9
+tqdm>=4.66
+
