@@ -177,3 +177,17 @@ First-round model choice:
 - `paper_shadow_modular_istd_full_b12_int8.tflite` remains the preferred ESP32 first-pass runtime because the two-head exclusion path gives explicit hand/object suppression thresholds and the model is smaller at `54288` bytes.
 - `paper_shadow_softmax_istd_full_b16_int8.tflite` is the strongest offline recall comparison so far, with TFLite shadow recall `0.730` and hand FPR `0.149`.
 - Both full-ISTD models beat the previous `istd_200_strong_b16` baseline recall `0.444` while keeping hand FPR under or near the first-round `0.15` target.
+
+First-round ESP32 field-test handoff added:
+
+- Added `shadowcam::LocalNormalize96Integral` to reduce ESP32 preprocessing cost versus the original 9x9 brute-force local mean.
+- Added `esp32/arduino_shadowcam_modular/arduino_shadowcam_modular.ino`, an AI-Thinker ESP32-CAM sketch that:
+  - captures QQVGA grayscale frames
+  - downsamples to `96x96`
+  - runs integral-image local normalization
+  - invokes `paper_shadow_modular_istd_full_b12`
+  - applies `shadow_threshold=0.70` and `exclude_threshold=0.65`
+  - prints FPS, preprocessing time, inference time, postprocessing time, mask ratio, heap, and PSRAM once per second
+- Added `esp32/FIRST_ROUND_FIELD_TEST.md` for the first 50-100 real scenes.
+- Added `scripts/summarize_field_log.py` to summarize serial logs from the field-test sketch.
+- Local note: this machine has ESP-IDF but not `arduino-cli`, so the Arduino sketch still needs board-side compile/flash verification in Arduino IDE, Arduino CLI, or PlatformIO.

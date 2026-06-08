@@ -48,6 +48,34 @@ void LocalNormalize96(const uint8_t* src96, uint8_t* dst96) {
   }
 }
 
+void LocalNormalize96Integral(const uint8_t* src96, uint8_t* dst96, int32_t* integral97x97) {
+  constexpr int radius = 4;
+  constexpr int stride = kInputW + 1;
+  std::memset(integral97x97, 0, stride * (kInputH + 1) * sizeof(int32_t));
+  for (int y = 0; y < kInputH; ++y) {
+    int row_sum = 0;
+    for (int x = 0; x < kInputW; ++x) {
+      row_sum += src96[y * kInputW + x];
+      integral97x97[(y + 1) * stride + (x + 1)] = integral97x97[y * stride + (x + 1)] + row_sum;
+    }
+  }
+  for (int y = 0; y < kInputH; ++y) {
+    const int y0 = std::max(0, y - radius);
+    const int y1 = std::min(kInputH - 1, y + radius);
+    for (int x = 0; x < kInputW; ++x) {
+      const int x0 = std::max(0, x - radius);
+      const int x1 = std::min(kInputW - 1, x + radius);
+      const int sum =
+          integral97x97[(y1 + 1) * stride + (x1 + 1)] -
+          integral97x97[y0 * stride + (x1 + 1)] -
+          integral97x97[(y1 + 1) * stride + x0] +
+          integral97x97[y0 * stride + x0];
+      const int count = (y1 - y0 + 1) * (x1 - x0 + 1);
+      dst96[y * kInputW + x] = clamp_u8(static_cast<int>(src96[y * kInputW + x]) - (sum / count) + 128);
+    }
+  }
+}
+
 void QuantizeInput96(const uint8_t* gray96, int8_t* input, QuantParams q) {
   for (int i = 0; i < kInputW * kInputH; ++i) {
     const float normalized = static_cast<float>(gray96[i]) / 127.5f - 1.0f;
