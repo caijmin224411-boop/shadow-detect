@@ -95,3 +95,55 @@ Modular smoke verification completed:
 - Exported `outputs/paper_shadow_modular_order_smoke_b8_int8.tflite`, 40,840 bytes.
 - TFLite/Keras output-order alignment reported `shadow_output_index=1` and `exclude_output_index=0` for that smoke export.
 - The smoke model is intentionally undertrained and not a quality detector; it is only a two-head pipeline check.
+
+Full ISTD modular training round completed:
+
+- Created branch `experiment/data-training-v1` for this data/training pass.
+- Updated `scripts/prepare_istd_hf.py` with `--target-split` and `--resume`, so interrupted Hugging Face downloads can continue cleanly and the official ISTD `train` / `test` splits can map directly to unified `train` / `val`.
+- Downloaded full `Donghyun99/ISTD` into `work/datasets/istd_full`:
+  - train pairs: `1330`
+  - val pairs: `540`
+  - train pixels: class 0 `328039637`, class 1 `80536363`, class 2 `0`
+  - val pixels: class 0 `139716473`, class 1 `26171527`, class 2 `0`
+- Generated `work/datasets/istd_full_hardneg_v1` with synthetic dark object hard negatives:
+  - train pairs: `3830`
+  - val pairs: `1040`
+  - train pixels: class 0 `912232945`, class 1 `221947863`, class 2 `42395192`
+  - val pixels: class 0 `262795030`, class 1 `48170442`, class 2 `8522528`
+- Trained the modular two-head model:
+
+```bash
+work/.venv/bin/python scripts/train_modular.py --data work/datasets/istd_full_hardneg_v1 --out work/runs/modular_istd_full_b12 --epochs 60 --batch-size 64 --base-channels 12 --shadow-pos-weight 4 --exclude-pos-weight 12
+```
+
+- Best checkpoint: `work/runs/modular_istd_full_b12/best.keras`.
+- Best validation loss occurred at epoch `52/60`: `val_loss=1.214341`, `val_shadow_logits_loss=0.643151`, `val_exclude_logits_loss=0.708024`.
+- Keras threshold points on `istd_full_hardneg_v1` val:
+  - high recall point `shadow=0.20`, `exclude=0.75`: shadow IoU `0.439`, recall `0.824`, hand FPR `0.218`, dark-paper FPR `0.156`
+  - balanced Keras point `shadow=0.45`, `exclude=0.60`: shadow IoU `0.478`, recall `0.713`, hand FPR `0.139`, dark-paper FPR `0.087`
+  - conservative Keras point `shadow=0.55`, `exclude=0.65`: shadow IoU `0.503`, recall `0.709`, hand FPR `0.146`, dark-paper FPR `0.073`
+- Exported full-int8 TFLite:
+  - `outputs/paper_shadow_modular_istd_full_b12_int8.tflite`
+  - size: `54288` bytes
+- Generated ESP32 model array:
+  - `esp32/paper_shadow_modular_istd_full_b12_model_data.cc`
+  - array: `g_paper_shadow_modular_istd_full_b12_model_data`
+  - byte length: `54288`
+- TFLite output-order verification with `--keras-model`:
+  - `shadow_output_index=1`
+  - `exclude_output_index=0`
+  - output names: `StatefulPartitionedCall_1:1`, `StatefulPartitionedCall_1:0`
+  - input quantization: scale `0.007843137718737125`, zero point `-1`
+- Recommended int8 default threshold for the first ESP32 integration pass:
+  - `shadow_threshold=0.70`
+  - `exclude_threshold=0.65`
+  - TFLite val metrics: shadow IoU `0.521`, shadow recall `0.673`, shadow precision `0.698`, hand FPR `0.146`, dark-paper FPR `0.052`, desktop TFLite FPS `675`
+- Quantization comparison:
+  - Keras `0.55/0.65`: shadow IoU `0.503`, recall `0.709`, hand FPR `0.146`
+  - TFLite `0.70/0.65`: shadow IoU `0.521`, recall `0.673`, hand FPR `0.146`
+  - int8 remains under the `<120KB` target and meets the first-round goal of improving recall beyond `0.444` while keeping hand FPR below `0.15` at the selected threshold.
+- Softmax control training is still pending for the next comparison run:
+
+```bash
+work/.venv/bin/python scripts/train.py --data work/datasets/istd_full_hardneg_v1 --out work/runs/softmax_istd_full_b16 --epochs 40 --batch-size 64 --base-channels 16 --class-weights 1.0,3.0,12.0
+```
