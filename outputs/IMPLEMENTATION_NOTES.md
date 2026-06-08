@@ -142,8 +142,38 @@ work/.venv/bin/python scripts/train_modular.py --data work/datasets/istd_full_ha
   - Keras `0.55/0.65`: shadow IoU `0.503`, recall `0.709`, hand FPR `0.146`
   - TFLite `0.70/0.65`: shadow IoU `0.521`, recall `0.673`, hand FPR `0.146`
   - int8 remains under the `<120KB` target and meets the first-round goal of improving recall beyond `0.444` while keeping hand FPR below `0.15` at the selected threshold.
-- Softmax control training is still pending for the next comparison run:
+- Softmax control training completed as a comparison run:
 
 ```bash
 work/.venv/bin/python scripts/train.py --data work/datasets/istd_full_hardneg_v1 --out work/runs/softmax_istd_full_b16 --epochs 40 --batch-size 64 --base-channels 16 --class-weights 1.0,3.0,12.0
 ```
+
+- The run was stopped during epoch `29/40` after a usable best checkpoint had already plateaued; `work/runs/softmax_istd_full_b16/best.keras` is from logged epoch `28`.
+- Best logged validation values: `val_loss=0.939896`, `val_pixel_acc=0.880079`.
+- Keras val metrics for `best.keras`:
+  - shadow IoU `0.523`, recall `0.727`, precision `0.651`
+  - hand/object IoU `0.317`, hand/object recall `0.826`
+  - hand false positive rate `0.143`
+  - dark-paper false positive rate `0.069`
+- Added `scripts/evaluate_tflite.py` for single-output 3-class full-int8 models.
+- Exported full-int8 TFLite:
+  - `outputs/paper_shadow_softmax_istd_full_b16_int8.tflite`
+  - size: `68488` bytes
+- Generated ESP32 model array:
+  - `esp32/paper_shadow_softmax_istd_full_b16_model_data.cc`
+  - array: `g_paper_shadow_softmax_istd_full_b16_model_data`
+  - byte length: `68488`
+- TFLite val metrics:
+  - shadow IoU `0.526`, recall `0.730`, precision `0.652`
+  - hand/object IoU `0.320`, hand/object recall `0.819`
+  - hand false positive rate `0.149`
+  - dark-paper false positive rate `0.069`
+  - desktop TFLite FPS `189`
+  - input quantization: scale `0.007843137718737125`, zero point `-1`
+  - output quantization: scale `0.07014119625091553`, zero point `32`
+
+First-round model choice:
+
+- `paper_shadow_modular_istd_full_b12_int8.tflite` remains the preferred ESP32 first-pass runtime because the two-head exclusion path gives explicit hand/object suppression thresholds and the model is smaller at `54288` bytes.
+- `paper_shadow_softmax_istd_full_b16_int8.tflite` is the strongest offline recall comparison so far, with TFLite shadow recall `0.730` and hand FPR `0.149`.
+- Both full-ISTD models beat the previous `istd_200_strong_b16` baseline recall `0.444` while keeping hand FPR under or near the first-round `0.15` target.
