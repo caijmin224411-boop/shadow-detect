@@ -22,8 +22,13 @@ def load_grayscale(path: PathLike) -> np.ndarray:
 def load_mask(path: PathLike) -> np.ndarray:
     mask = Image.open(path).convert("L")
     arr = np.asarray(mask, dtype=np.uint8)
-    if arr.max() > 2:
-        arr = (arr > 127).astype(np.uint8)
+    if arr.max() > 3:
+        unique = np.unique(arr)
+        if len(unique) <= 4:
+            remap = {int(value): idx for idx, value in enumerate(sorted(int(v) for v in unique))}
+            arr = np.vectorize(remap.get, otypes=[np.uint8])(arr)
+        else:
+            arr = (arr > 127).astype(np.uint8)
     return arr
 
 

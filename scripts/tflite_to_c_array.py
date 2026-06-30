@@ -19,9 +19,11 @@ def main():
         lines.append(f"  {chunk},")
     content = (
         "#include <cstdint>\n\n"
+        f"extern const unsigned char {args.name}[];\n"
         f"alignas(16) const unsigned char {args.name}[] = {{\n"
         + "\n".join(lines)
         + "\n};\n"
+        f"extern const unsigned int {args.name}_len;\n"
         f"const unsigned int {args.name}_len = {len(data)};\n"
     )
     Path(args.output).write_text(content, encoding="utf-8")
@@ -29,4 +31,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -100,3 +100,35 @@ def make_modular_dataset(
         to_heads,
         num_parallel_calls=tf.data.AUTOTUNE,
     )
+
+
+def make_three_head_dataset(
+    root: PathLike,
+    split: str,
+    batch_size: int,
+    augment: bool,
+    shuffle: bool = True,
+):
+    """Return shadow/exclude/paper targets from the unified mask format.
+
+    Mask labels:
+      0: clean paper or unlabeled non-shadow region
+      1: shadow
+      2: hand/object/dark negative region
+      3: known non-paper background
+    """
+
+    def to_heads(x, y):
+        shadow = tf.cast(y == 1, tf.float32)[..., None]
+        exclude = tf.cast(y == 2, tf.float32)[..., None]
+        paper = tf.cast((y != 2) & (y != 3), tf.float32)[..., None]
+        return x, {
+            "shadow_logits": shadow,
+            "exclude_logits": exclude,
+            "paper_logits": paper,
+        }
+
+    return make_dataset(root, split, batch_size, augment, shuffle).map(
+        to_heads,
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )

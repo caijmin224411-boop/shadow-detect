@@ -2,4 +2,6 @@ work/
 __pycache__/
 *.py[cod]
 .DS_Store
-
+esp32p4_shadow_overlay/build/
+esp32p4_shadow_overlay/managed_components/
+esp32p4_shadow_overlay/sdkconfig
