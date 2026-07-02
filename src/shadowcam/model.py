@@ -94,6 +94,25 @@ def _tiny_feature_pyramid(inputs, base_channels: int):
     return _ds_block(u1, base_channels * 2, "dec1")
 
 
+def _tiny_p4_feature_head(inputs, base_channels: int):
+    """Build 48x48 features without resize/tile ops.
+
+    Keras UpSampling2D can become TILE in full-int8 TFLite, which is not
+    available in the ESP32-P4 TFLite Micro component we use. This head keeps
+    the output at 48x48 using only conv/depthwise conv layers.
+    """
+
+    x0 = _conv_bn_relu(inputs, base_channels, "stem")
+    x0 = _ds_block(x0, base_channels, "enc0_a")
+
+    x1 = _ds_block(x0, base_channels * 2, "enc1_down", stride=2)  # 48x48
+    x1 = _ds_block(x1, base_channels * 2, "enc1_a")
+
+    x1 = _ds_block(x1, base_channels * 3, "p4_refine_a")
+    x1 = _ds_block(x1, base_channels * 2, "p4_refine_b")
+    return _ds_block(x1, base_channels * 2, "p4_refine_c")
+
+
 def build_modular_shadow_exclusion_net(
     input_shape=(INPUT_HEIGHT, INPUT_WIDTH, 1),
     base_channels: int = 8,
@@ -125,6 +144,104 @@ def build_modular_shadow_exclusion_net(
         inputs=inputs,
         outputs=[shadow_logits, exclude_logits],
         name="modular_shadow_exclusion_net",
+    )
+
+
+def build_modular_shadow_exclusion_net_p4(
+    input_shape=(INPUT_HEIGHT, INPUT_WIDTH, 1),
+    base_channels: int = 8,
+) -> tf.keras.Model:
+    """Build a two-head ESP32-P4 friendly model.
+
+    The graph intentionally avoids UpSampling2D and decoder skip paths. It
+    emits 48x48 logits from stride-2 features with a tiny global context path.
+    """
+
+    inputs = tf.keras.Input(shape=input_shape, name="image")
+    features = _tiny_p4_feature_head(inputs, base_channels)
+    shadow_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="shadow_logits",
+    )(features)
+    exclude_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="exclude_logits",
+    )(features)
+
+    return tf.keras.Model(
+        inputs=inputs,
+        outputs=[shadow_logits, exclude_logits],
+        name="modular_shadow_exclusion_net_p4",
+    )
+
+
+def build_shadow_exclude_paper_net(
+    input_shape=(INPUT_HEIGHT, INPUT_WIDTH, 1),
+    base_channels: int = 12,
+) -> tf.keras.Model:
+    """Build a three-head student model with an optional paper gate head."""
+
+    inputs = tf.keras.Input(shape=input_shape, name="image")
+    features = _tiny_feature_pyramid(inputs, base_channels)
+    shadow_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="shadow_logits",
+    )(features)
+    exclude_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="exclude_logits",
+    )(features)
+    paper_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="paper_logits",
+    )(features)
+    return tf.keras.Model(
+        inputs=inputs,
+        outputs=[shadow_logits, exclude_logits, paper_logits],
+        name="shadow_exclude_paper_net",
+    )
+
+
+def build_shadow_exclude_paper_net_p4(
+    input_shape=(INPUT_HEIGHT, INPUT_WIDTH, 1),
+    base_channels: int = 12,
+) -> tf.keras.Model:
+    """Build an ESP32-P4-friendly three-head student model."""
+
+    inputs = tf.keras.Input(shape=input_shape, name="image")
+    features = _tiny_p4_feature_head(inputs, base_channels)
+    shadow_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="shadow_logits",
+    )(features)
+    exclude_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="exclude_logits",
+    )(features)
+    paper_logits = tf.keras.layers.Conv2D(
+        1,
+        kernel_size=1,
+        padding="same",
+        name="paper_logits",
+    )(features)
+    return tf.keras.Model(
+        inputs=inputs,
+        outputs=[shadow_logits, exclude_logits, paper_logits],
+        name="shadow_exclude_paper_net_p4",
     )
 
 

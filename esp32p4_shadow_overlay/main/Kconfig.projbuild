@@ -1,0 +1,83 @@
+menu "Example Configuration"
+    config EXAMPLE_USED_LDO_CHAN_ID
+        int "example used LDO channel ID"
+        default 3
+        help
+            Example used LDO channel ID, you may check datasheet to know more details.
+
+    config EXAMPLE_USED_LDO_VOLTAGE_MV
+        int "example used LDO voltage in mV"
+        default 2500
+        range 0 3300
+        help
+            Example used LDO voltage, in mV
+
+    config EXAMPLE_CAM_PORT_ISP_MIPI
+        bool
+        default y
+
+    choice EXAMPLE_MIPI_CSI_DISP_HRES
+        bool "Set MIPI CSI horizontal resolution"
+        default EXAMPLE_MIPI_CSI_HRES_1024
+
+        config EXAMPLE_MIPI_CSI_HRES_800
+            bool "800"
+        config EXAMPLE_MIPI_CSI_HRES_1024
+            bool "1024"
+    endchoice
+
+    config EXAMPLE_MIPI_CSI_DISP_HRES
+        int
+        default 800 if EXAMPLE_MIPI_CSI_HRES_800
+        default 1024 if EXAMPLE_MIPI_CSI_HRES_1024
+
+    choice EXAMPLE_MIPI_CSI_DISP_VRES
+        bool "Set MIPI CSI vertical resolution"
+        default EXAMPLE_MIPI_CSI_VRES_600
+
+        config EXAMPLE_MIPI_CSI_VRES_600
+            bool "600"
+        config EXAMPLE_MIPI_CSI_VRES_640
+            bool "640"
+        config EXAMPLE_MIPI_CSI_VRES_800
+            bool "800"
+        config EXAMPLE_MIPI_CSI_VRES_1280
+            bool "1280"
+    endchoice
+
+    config EXAMPLE_MIPI_CSI_DISP_VRES
+        int
+        default 600 if EXAMPLE_MIPI_CSI_VRES_600
+        default 640 if EXAMPLE_MIPI_CSI_VRES_640
+        default 800 if EXAMPLE_MIPI_CSI_VRES_800
+        default 1280 if EXAMPLE_MIPI_CSI_VRES_1280
+
+    config SHADOW_SERVO_KEYBOARD_ENABLE
+        bool "Enable PWM servo keyboard control"
+        default n
+        help
+            Enable UART keyboard control for three PWM servos.
+
+    config SHADOW_SERVO_AUTO_ENABLE
+        bool "Enable automatic near-camera shadow reduction servo control"
+        default y
+        help
+            Enable closed-loop PWM control from shadow recognition features.
+            This should not be enabled at the same time as keyboard control because
+            both modes use the same LEDC timer and channels.
+
+    config SHADOW_SERVO1_GPIO
+        int "Servo 1 PWM GPIO"
+        default 1
+        range 0 54
+
+    config SHADOW_SERVO2_GPIO
+        int "Servo 2 PWM GPIO"
+        default 2
+        range 0 54
+
+    config SHADOW_SERVO3_GPIO
+        int "Servo 3 PWM GPIO"
+        default 3
+        range 0 54
+endmenu
