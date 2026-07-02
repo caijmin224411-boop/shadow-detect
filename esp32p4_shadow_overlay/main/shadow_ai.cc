@@ -39,10 +39,13 @@ uint8_t *g_arena = nullptr;
 uint8_t g_gray[kInputW * kInputH];
 uint8_t g_norm[kInputW * kInputH];
 uint8_t g_mask[kMaskW * kMaskH];
+uint8_t g_exclude_mask[kMaskW * kMaskH];
 uint8_t g_scratch[kMaskW * kMaskH];
 int32_t g_integral[(kInputW + 1) * (kInputH + 1)];
 int g_frame_counter = 0;
 bool g_ready = false;
+shadow_frame_features_t g_last_features = {};
+bool g_has_last_features = false;
 
 inline uint8_t clamp_u8(int value) {
     return static_cast<uint8_t>(std::max(0, std::min(255, value)));
@@ -123,8 +126,64 @@ void build_mask48(void) {
     const int8_t *exclude = g_exclude_output->data.int8;
 
     for (int i = 0; i < kMaskW * kMaskH; ++i) {
+        g_exclude_mask[i] = (exclude[i] >= exclude_threshold) ? 255 : 0;
         g_mask[i] = (shadow[i] >= shadow_threshold && exclude[i] < exclude_threshold) ? 255 : 0;
     }
+}
+
+void update_last_features(void) {
+    shadow_frame_features_t features = {};
+    features.paper_pixels = kMaskW * kMaskH;
+    features.has_paper = true;
+    features.paper_centroid_px.u = (kMaskW - 1) * 0.5f;
+    features.paper_centroid_px.v = (kMaskH - 1) * 0.5f;
+
+    int shadow_u_sum = 0;
+    int shadow_v_sum = 0;
+    int near_u_sum = 0;
+    int near_v_sum = 0;
+    int exclude_count = 0;
+    constexpr int kNearStartY = (kMaskH * 2) / 3;
+
+    for (int y = 0; y < kMaskH; ++y) {
+        for (int x = 0; x < kMaskW; ++x) {
+            const int idx = y * kMaskW + x;
+            if (g_exclude_mask[idx] > 0) {
+                ++exclude_count;
+            }
+            if (g_mask[idx] == 0) {
+                continue;
+            }
+            ++features.shadow_on_paper_pixels;
+            shadow_u_sum += x;
+            shadow_v_sum += y;
+            if (y >= kNearStartY) {
+                ++features.near_shadow_on_paper_pixels;
+                near_u_sum += x;
+                near_v_sum += y;
+            }
+        }
+    }
+
+    features.hand_pen_on_paper_pixels = exclude_count;
+    features.has_shadow = features.shadow_on_paper_pixels > 0;
+    features.has_near_shadow = features.near_shadow_on_paper_pixels > 0;
+
+    if (features.has_shadow) {
+        features.shadow_centroid_px.u =
+            static_cast<float>(shadow_u_sum) / static_cast<float>(features.shadow_on_paper_pixels);
+        features.shadow_centroid_px.v =
+            static_cast<float>(shadow_v_sum) / static_cast<float>(features.shadow_on_paper_pixels);
+    }
+    if (features.has_near_shadow) {
+        features.near_shadow_centroid_px.u =
+            static_cast<float>(near_u_sum) / static_cast<float>(features.near_shadow_on_paper_pixels);
+        features.near_shadow_centroid_px.v =
+            static_cast<float>(near_v_sum) / static_cast<float>(features.near_shadow_on_paper_pixels);
+    }
+
+    g_last_features = features;
+    g_has_last_features = true;
 }
 
 void remove_tiny_islands(void) {
@@ -287,6 +346,15 @@ extern "C" bool shadow_ai_process_frame(uint16_t *rgb565_frame, int width, int h
 
     build_mask48();
     remove_tiny_islands();
+    update_last_features();
     draw_mask_contours(rgb565_frame, width, height);
+    return true;
+}
+
+extern "C" bool shadow_ai_get_last_features(shadow_frame_features_t *features) {
+    if (features == nullptr || !g_has_last_features) {
+        return false;
+    }
+    *features = g_last_features;
     return true;
 }

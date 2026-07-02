@@ -1,6 +1,10 @@
 idf_component_register(SRCS
                        "mipi_isp_dsi_main.c"
                        "servo_keyboard.c"
+                       "shadow_servo_auto.c"
+                       "three_axis_controller.c"
+                       "shadow_elimination_logic.c"
+                       "esp32_three_axis_pwm.c"
                        "shadow_ai.cc"
                        "paper_shadow_p4_model_data.cc"
                        INCLUDE_DIRS "."

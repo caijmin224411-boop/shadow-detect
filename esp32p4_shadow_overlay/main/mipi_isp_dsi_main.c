@@ -24,6 +24,7 @@
 #include "example_config.h"
 #include "servo_keyboard.h"
 #include "shadow_ai.h"
+#include "shadow_servo_auto.h"
 
 static const char *TAG = "mipi_isp_dsi";
 
@@ -149,12 +150,20 @@ void app_main(void)
         ESP_LOGW(TAG, "servo keyboard control is not active");
     }
 
+    bool servo_auto_enabled = shadow_servo_auto_init();
+    if (!servo_auto_enabled) {
+        ESP_LOGW(TAG, "automatic shadow servo control is not active");
+    }
+
     while (1) {
         ESP_ERROR_CHECK(esp_cam_ctlr_receive(cam_handle, &new_trans, ESP_CAM_CTLR_MAX_DELAY));
         if (shadow_overlay_enabled) {
             shadow_ai_process_frame((uint16_t *)frame_buffer,
                                     CONFIG_EXAMPLE_MIPI_CSI_DISP_HRES,
                                     CONFIG_EXAMPLE_MIPI_DSI_DISP_VRES);
+            if (servo_auto_enabled) {
+                shadow_servo_auto_update();
+            }
             esp_cache_msync((void *)frame_buffer, frame_buffer_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         }
     }
