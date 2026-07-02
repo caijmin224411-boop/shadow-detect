@@ -23,11 +23,13 @@ constexpr int kMaskW = 48;
 constexpr int kMaskH = 48;
 constexpr int kArenaBytes = 420 * 1024;
 constexpr float kShadowThreshold = 0.70f;
-constexpr float kExcludeThreshold = 0.65f;
+constexpr float kExcludeThreshold = 0.40f;
+constexpr float kPaperThreshold = 0.20f;
 constexpr int kRunEveryFrames = 1;
 
 constexpr int kShadowOutputIndex = 1;
 constexpr int kExcludeOutputIndex = 0;
+constexpr int kPaperOutputIndex = 2;
 constexpr uint16_t kContourColor = 0xffe0;  // RGB565 yellow
 
 const tflite::Model *g_model = nullptr;
@@ -35,11 +37,13 @@ tflite::MicroInterpreter *g_interpreter = nullptr;
 TfLiteTensor *g_input = nullptr;
 TfLiteTensor *g_shadow_output = nullptr;
 TfLiteTensor *g_exclude_output = nullptr;
+TfLiteTensor *g_paper_output = nullptr;
 uint8_t *g_arena = nullptr;
 uint8_t g_gray[kInputW * kInputH];
 uint8_t g_norm[kInputW * kInputH];
 uint8_t g_mask[kMaskW * kMaskH];
 uint8_t g_exclude_mask[kMaskW * kMaskH];
+uint8_t g_paper_mask[kMaskW * kMaskH];
 uint8_t g_scratch[kMaskW * kMaskH];
 int32_t g_integral[(kInputW + 1) * (kInputH + 1)];
 int g_frame_counter = 0;
@@ -122,22 +126,24 @@ int8_t quantized_logit_threshold(float probability, const TfLiteTensor *tensor) 
 void build_mask48(void) {
     const int8_t shadow_threshold = quantized_logit_threshold(kShadowThreshold, g_shadow_output);
     const int8_t exclude_threshold = quantized_logit_threshold(kExcludeThreshold, g_exclude_output);
+    const int8_t paper_threshold = quantized_logit_threshold(kPaperThreshold, g_paper_output);
     const int8_t *shadow = g_shadow_output->data.int8;
     const int8_t *exclude = g_exclude_output->data.int8;
+    const int8_t *paper = g_paper_output->data.int8;
 
     for (int i = 0; i < kMaskW * kMaskH; ++i) {
         g_exclude_mask[i] = (exclude[i] >= exclude_threshold) ? 255 : 0;
-        g_mask[i] = (shadow[i] >= shadow_threshold && exclude[i] < exclude_threshold) ? 255 : 0;
+        g_paper_mask[i] = (paper[i] >= paper_threshold) ? 255 : 0;
+        g_mask[i] = (shadow[i] >= shadow_threshold &&
+                     exclude[i] < exclude_threshold &&
+                     paper[i] >= paper_threshold) ? 255 : 0;
     }
 }
 
 void update_last_features(void) {
     shadow_frame_features_t features = {};
-    features.paper_pixels = kMaskW * kMaskH;
-    features.has_paper = true;
-    features.paper_centroid_px.u = (kMaskW - 1) * 0.5f;
-    features.paper_centroid_px.v = (kMaskH - 1) * 0.5f;
-
+    int paper_u_sum = 0;
+    int paper_v_sum = 0;
     int shadow_u_sum = 0;
     int shadow_v_sum = 0;
     int near_u_sum = 0;
@@ -148,6 +154,11 @@ void update_last_features(void) {
     for (int y = 0; y < kMaskH; ++y) {
         for (int x = 0; x < kMaskW; ++x) {
             const int idx = y * kMaskW + x;
+            if (g_paper_mask[idx] > 0) {
+                ++features.paper_pixels;
+                paper_u_sum += x;
+                paper_v_sum += y;
+            }
             if (g_exclude_mask[idx] > 0) {
                 ++exclude_count;
             }
@@ -166,9 +177,16 @@ void update_last_features(void) {
     }
 
     features.hand_pen_on_paper_pixels = exclude_count;
+    features.has_paper = features.paper_pixels > 0;
     features.has_shadow = features.shadow_on_paper_pixels > 0;
     features.has_near_shadow = features.near_shadow_on_paper_pixels > 0;
 
+    if (features.has_paper) {
+        features.paper_centroid_px.u =
+            static_cast<float>(paper_u_sum) / static_cast<float>(features.paper_pixels);
+        features.paper_centroid_px.v =
+            static_cast<float>(paper_v_sum) / static_cast<float>(features.paper_pixels);
+    }
     if (features.has_shadow) {
         features.shadow_centroid_px.u =
             static_cast<float>(shadow_u_sum) / static_cast<float>(features.shadow_on_paper_pixels);
@@ -303,16 +321,20 @@ extern "C" bool shadow_ai_init(void) {
     g_input = g_interpreter->input(0);
     g_shadow_output = g_interpreter->output(kShadowOutputIndex);
     g_exclude_output = g_interpreter->output(kExcludeOutputIndex);
-    if (g_input == nullptr || g_shadow_output == nullptr || g_exclude_output == nullptr) {
+    g_paper_output = g_interpreter->output(kPaperOutputIndex);
+    if (g_input == nullptr || g_shadow_output == nullptr || g_exclude_output == nullptr || g_paper_output == nullptr) {
         ESP_LOGE(kTag, "missing input/output tensors");
         return false;
     }
-    if (g_input->type != kTfLiteInt8 || g_shadow_output->type != kTfLiteInt8 || g_exclude_output->type != kTfLiteInt8) {
+    if (g_input->type != kTfLiteInt8 ||
+        g_shadow_output->type != kTfLiteInt8 ||
+        g_exclude_output->type != kTfLiteInt8 ||
+        g_paper_output->type != kTfLiteInt8) {
         ESP_LOGE(kTag, "expected full int8 tensors");
         return false;
     }
 
-    ESP_LOGI(kTag, "ready: model=%u bytes arena=%d input(scale=%.6f,zp=%d) shadow(scale=%.6f,zp=%d) exclude(scale=%.6f,zp=%d)",
+    ESP_LOGI(kTag, "ready: model=%u bytes arena=%d input(scale=%.6f,zp=%d) shadow(scale=%.6f,zp=%d) exclude(scale=%.6f,zp=%d) paper(scale=%.6f,zp=%d)",
              g_paper_shadow_p4_model_data_len,
              kArenaBytes,
              static_cast<double>(g_input->params.scale),
@@ -320,7 +342,9 @@ extern "C" bool shadow_ai_init(void) {
              static_cast<double>(g_shadow_output->params.scale),
              g_shadow_output->params.zero_point,
              static_cast<double>(g_exclude_output->params.scale),
-             g_exclude_output->params.zero_point);
+             g_exclude_output->params.zero_point,
+             static_cast<double>(g_paper_output->params.scale),
+             g_paper_output->params.zero_point);
     g_ready = true;
     return true;
 }
