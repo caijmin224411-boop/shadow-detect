@@ -8,7 +8,7 @@ from pathlib import Path
 import tensorflow as tf
 
 from shadowcam.dataset import make_dataset
-from shadowcam.model import build_tiny_shadow_unet, count_parameters
+from shadowcam.model import build_shadow_teacher_unet, build_tiny_shadow_unet, count_parameters
 
 
 def sparse_dice_loss(y_true, y_logits, num_classes=3):
@@ -43,16 +43,34 @@ def main():
     parser.add_argument("--base-channels", type=int, default=8)
     parser.add_argument("--learning-rate", type=float, default=2e-3)
     parser.add_argument("--class-weights", default="1.0,2.5,2.0")
+    parser.add_argument(
+        "--architecture",
+        choices=("tiny", "teacher"),
+        default="tiny",
+        help="Use the deployable tiny model or the larger annotation-ceiling teacher.",
+    )
+    parser.add_argument(
+        "--no-augment",
+        action="store_true",
+        help="Train on the original frames without synthetic photometric augmentation.",
+    )
     args = parser.parse_args()
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     class_weights = [float(x) for x in args.class_weights.split(",")]
 
-    train_ds = make_dataset(args.data, "train", args.batch_size, augment=True, shuffle=True)
+    train_ds = make_dataset(
+        args.data,
+        "train",
+        args.batch_size,
+        augment=not args.no_augment,
+        shuffle=True,
+    )
     val_ds = make_dataset(args.data, "val", args.batch_size, augment=False, shuffle=False)
 
-    model = build_tiny_shadow_unet(base_channels=args.base_channels)
+    builder = build_shadow_teacher_unet if args.architecture == "teacher" else build_tiny_shadow_unet
+    model = builder(base_channels=args.base_channels)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(args.learning_rate),
         loss=combined_loss(class_weights),
@@ -61,6 +79,7 @@ def main():
 
     metadata = {
         "base_channels": args.base_channels,
+        "architecture": args.architecture,
         "parameters": count_parameters(model),
         "input_shape": [96, 96, 1],
         "output_shape": [48, 48, 3],

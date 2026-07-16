@@ -28,6 +28,16 @@ def local_normalize(gray96: np.ndarray) -> np.ndarray:
     return np.clip(src - mean + 128.0, 0, 255).astype(np.uint8)
 
 
+def remove_yellow_overlay(frame: np.ndarray) -> np.ndarray:
+    """Inpaint old yellow comparison contours in the retained proxy video."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, np.asarray((20, 145, 145)), np.asarray((42, 255, 255)))
+    mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+    if not mask.any():
+        return frame
+    return cv2.inpaint(frame, mask, 4, cv2.INPAINT_TELEA)
+
+
 def postprocess_mask(mask48: np.ndarray, min_component_cells: int) -> np.ndarray:
     mask = mask48.astype(np.uint8) * 255
     kernel = np.ones((3, 3), np.uint8)
@@ -50,24 +60,36 @@ def infer_mask(frame_bgr: np.ndarray, model, args):
     x = x[None, ..., None]
 
     t0 = time.perf_counter()
-    shadow_logits, exclude_logits, paper_logits = unpack_outputs(model(x, training=False))
+    outputs = model(x, training=False)
     infer_ms = (time.perf_counter() - t0) * 1000.0
-    shadow_prob = tf.nn.sigmoid(shadow_logits).numpy()[0, ..., 0]
-    exclude_prob = tf.nn.sigmoid(exclude_logits).numpy()[0, ..., 0]
-    paper_prob = tf.nn.sigmoid(paper_logits).numpy()[0, ..., 0]
-    mask = (
-        (shadow_prob >= args.shadow_threshold)
-        & (exclude_prob < args.exclude_threshold)
-        & (paper_prob >= args.paper_threshold)
-    )
+    if not isinstance(outputs, (dict, list, tuple)) and outputs.shape[-1] == 3:
+        probs = tf.nn.softmax(outputs, axis=-1).numpy()[0]
+        shadow_prob = probs[..., 1]
+        exclude_prob = probs[..., 2]
+        paper_prob = probs[..., 0] + probs[..., 1]
+        mask = np.argmax(probs, axis=-1) == 1
+    else:
+        shadow_logits, exclude_logits, paper_logits = unpack_outputs(outputs)
+        shadow_prob = tf.nn.sigmoid(shadow_logits).numpy()[0, ..., 0]
+        exclude_prob = tf.nn.sigmoid(exclude_logits).numpy()[0, ..., 0]
+        paper_prob = tf.nn.sigmoid(paper_logits).numpy()[0, ..., 0]
+        mask = (
+            (shadow_prob >= args.shadow_threshold)
+            & (exclude_prob < args.exclude_threshold)
+            & (paper_prob >= args.paper_threshold)
+        )
     mask = postprocess_mask(mask, args.min_component_cells)
     return mask, infer_ms, float(np.mean(shadow_prob)), float(np.mean(exclude_prob)), float(np.mean(paper_prob))
 
 
-def draw_overlay(frame_bgr: np.ndarray, mask48: np.ndarray) -> np.ndarray:
+def draw_overlay(frame_bgr: np.ndarray, mask48: np.ndarray, fill_alpha: float) -> np.ndarray:
     mask_big = cv2.resize(mask48, (frame_bgr.shape[1], frame_bgr.shape[0]), interpolation=cv2.INTER_NEAREST)
     contours, _ = cv2.findContours(mask_big, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     overlay = frame_bgr.copy()
+    if fill_alpha > 0:
+        tint = frame_bgr.copy()
+        tint[mask_big > 0] = (0, 255, 255)
+        overlay = cv2.addWeighted(tint, fill_alpha, overlay, 1.0 - fill_alpha, 0.0)
     cv2.drawContours(overlay, contours, -1, (0, 255, 255), 2)
     return overlay
 
@@ -84,6 +106,8 @@ def main() -> int:
     parser.add_argument("--max-frames", type=int, default=0, help="0 means all frames.")
     parser.add_argument("--frame-stride", type=int, default=1)
     parser.add_argument("--local-normalize", action="store_true")
+    parser.add_argument("--remove-yellow-overlay", action="store_true")
+    parser.add_argument("--fill-alpha", type=float, default=0.22)
     args = parser.parse_args()
 
     video_path = Path(args.video)
@@ -117,11 +141,13 @@ def main() -> int:
         ok, frame = cap.read()
         if not ok:
             break
+        if args.remove_yellow_overlay:
+            frame = remove_yellow_overlay(frame)
         if read_index % max(1, args.frame_stride) != 0:
             read_index += 1
             continue
         mask, infer_ms, shadow_mean, exclude_mean, paper_mean = infer_mask(frame, model, args)
-        overlay = draw_overlay(frame, mask)
+        overlay = draw_overlay(frame, mask, args.fill_alpha)
         writer.write(overlay)
         mask_cells = int(np.count_nonzero(mask))
         records.append((infer_ms, mask_cells, shadow_mean, exclude_mean, paper_mean))
