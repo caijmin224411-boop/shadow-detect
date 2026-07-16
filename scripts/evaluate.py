@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
@@ -18,6 +19,7 @@ def main():
     parser.add_argument("--data", required=True)
     parser.add_argument("--split", default="val")
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--output", help="Optional path for the JSON report.")
     args = parser.parse_args()
 
     model = tf.keras.models.load_model(args.model, compile=False)
@@ -37,9 +39,13 @@ def main():
     y_pred = np.concatenate(y_pred_all, axis=0)
     report = segmentation_report(y_true, y_pred)
     report["desktop_fps"] = frame_count / max(elapsed, 1e-6)
-    print(json.dumps(report, indent=2))
+    report_json = json.dumps(report, indent=2)
+    if args.output:
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(report_json + "\n", encoding="utf-8")
+    print(report_json)
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,0 +1,20 @@
+{
+  "base_channels": 16,
+  "architecture": "teacher",
+  "parameters": 376403,
+  "input_shape": [
+    96,
+    96,
+    1
+  ],
+  "output_shape": [
+    48,
+    48,
+    3
+  ],
+  "class_weights": [
+    0.5,
+    6.0,
+    2.0
+  ]
+}
