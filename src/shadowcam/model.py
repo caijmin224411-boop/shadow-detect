@@ -72,6 +72,71 @@ def build_tiny_shadow_unet(
     return tf.keras.Model(inputs=inputs, outputs=logits, name="tiny_shadow_unet")
 
 
+def _teacher_block(x, channels: int, name: str):
+    """Two plain convolutions for stable training on a small labeled set."""
+
+    for index in range(2):
+        x = tf.keras.layers.Conv2D(
+            channels,
+            kernel_size=3,
+            padding="same",
+            activation="relu",
+            name=f"{name}_{index + 1}",
+        )(x)
+    return x
+
+
+def build_shadow_teacher_unet(
+    input_shape=(INPUT_HEIGHT, INPUT_WIDTH, 1),
+    num_classes: int = NUM_CLASSES,
+    base_channels: int = 16,
+) -> tf.keras.Model:
+    """Build a higher-context U-Net used to measure the annotation ceiling.
+
+    This model deliberately avoids batch normalization so that inference is
+    stable even when only a few dozen labeled frames are available. It is a
+    desktop teacher model, not the final ESP32-P4 deployment graph.
+    """
+
+    inputs = tf.keras.Input(shape=input_shape, name="image")
+    e0 = _teacher_block(inputs, base_channels, "enc0")  # 96x96
+    e1 = _teacher_block(
+        tf.keras.layers.MaxPool2D(pool_size=2, name="pool1")(e0),
+        base_channels * 2,
+        "enc1",
+    )  # 48x48
+    e2 = _teacher_block(
+        tf.keras.layers.MaxPool2D(pool_size=2, name="pool2")(e1),
+        base_channels * 4,
+        "enc2",
+    )  # 24x24
+    bottleneck = _teacher_block(
+        tf.keras.layers.MaxPool2D(pool_size=2, name="pool3")(e2),
+        base_channels * 6,
+        "bottleneck",
+    )  # 12x12
+
+    d2 = tf.keras.layers.UpSampling2D(size=2, interpolation="bilinear", name="up2")(bottleneck)
+    d2 = _teacher_block(
+        tf.keras.layers.Concatenate(name="teacher_skip2")([d2, e2]),
+        base_channels * 4,
+        "dec2",
+    )
+    d1 = tf.keras.layers.UpSampling2D(size=2, interpolation="bilinear", name="up1")(d2)
+    d1 = _teacher_block(
+        tf.keras.layers.Concatenate(name="teacher_skip1")([d1, e1]),
+        base_channels * 2,
+        "dec1",
+    )
+    logits = tf.keras.layers.Conv2D(
+        num_classes,
+        kernel_size=1,
+        padding="same",
+        name="logits",
+    )(d1)
+    return tf.keras.Model(inputs=inputs, outputs=logits, name="shadow_teacher_unet")
+
+
 def _tiny_feature_pyramid(inputs, base_channels: int):
     x0 = _conv_bn_relu(inputs, base_channels, "stem")
     x0 = _ds_block(x0, base_channels, "enc0_a")

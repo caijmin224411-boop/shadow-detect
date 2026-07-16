@@ -1,0 +1,22 @@
+{
+  "video": "source_video.mp4",
+  "model": "outputs/manual_shadow_model_v2/model/shadow_teacher_manual_v2.keras",
+  "source_frames": 443,
+  "source_fps": 30.0,
+  "size": [
+    1280,
+    720
+  ],
+  "processed_frames": 443,
+  "elapsed_s": 9.73235925,
+  "pipeline_fps": 45.51825396293299,
+  "infer_ms_mean": 6.499002933502197,
+  "infer_ms_p95": 6.67003698348999,
+  "mask_cells_mean": 137.07675170898438,
+  "mask_cells_max": 815,
+  "shadow_prob_mean_last": 9.139003850577865e-06,
+  "exclude_prob_mean_last": 2.4509937190941855e-08,
+  "paper_prob_mean_last": 1.0,
+  "overlay_video": "outputs/manual_shadow_model_v2/video/overlay.mp4",
+  "snapshots": {}
+}

@@ -134,6 +134,36 @@ python scripts/train.py \
   --batch-size 64
 ```
 
+### Single-Scene Manual Teacher Workflow
+
+For a fixed camera, paper, and lighting setup, annotate representative video
+frames with the browser tool, then train the larger teacher model to measure
+the achievable segmentation quality before compressing it for ESP32-P4:
+
+```bash
+python scripts/overfit_shadow_annotator.py \
+  --video /path/to/input.mp4 \
+  --review work/datasets/manual_shadow_review \
+  --frames 60
+
+python scripts/real_video_review_to_unified.py \
+  --review work/datasets/manual_shadow_review \
+  --output work/datasets/manual_shadow_unified \
+  --shuffle-seed 7 \
+  --merge-nonpaper-into-background
+
+python scripts/train.py \
+  --data work/datasets/manual_shadow_unified \
+  --out work/runs/manual_shadow_teacher \
+  --architecture teacher \
+  --base-channels 16 \
+  --class-weights 0.5,6.0,2.0 \
+  --no-augment
+```
+
+See [the annotation guide](docs/OVERFIT_SHADOW_ANNOTATOR_USAGE.md) and the
+checked-in [V2 result summary](outputs/manual_shadow_model_v2/结果说明.md).
+
 ### Modular Shadow + Exclusion Experiment
 
 Use this route when hand/object false positives are the main problem. The model

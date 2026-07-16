@@ -1,0 +1,20 @@
+{
+  "class_0_iou": 0.9876911116869656,
+  "class_0_recall": 0.9894859813084113,
+  "class_0_precision": 0.998166819431714,
+  "class_0_true_ratio": 0.7430555555555556,
+  "class_0_pred_ratio": 0.7365933641975309,
+  "class_1_iou": 0.8897009966777408,
+  "class_1_recall": 0.9911176905995559,
+  "class_1_precision": 0.8968519758874749,
+  "class_1_true_ratio": 0.06515239197530864,
+  "class_1_pred_ratio": 0.07200038580246913,
+  "class_2_iou": 0.9746520874751491,
+  "class_2_recall": 0.9861704802615037,
+  "class_2_precision": 0.9881582262534644,
+  "class_2_true_ratio": 0.1917920524691358,
+  "class_2_pred_ratio": 0.19140625,
+  "hand_false_positive_rate": 0.008046266029670606,
+  "dark_nonshadow_false_positive_rate": 0.007944286819705958,
+  "desktop_fps": 144.6950199559356
+}
